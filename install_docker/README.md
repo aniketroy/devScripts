@@ -2,7 +2,7 @@
 
 ### Details
 
-This script is designed to Docker CE on Ubuntu
+This script is designed to deploy Docker CE on Ubuntu
 
 Requires a Non-root user with sudo privileges
 
