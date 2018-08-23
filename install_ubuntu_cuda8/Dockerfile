@@ -1,4 +1,4 @@
-FROM nivida/cuda:cuda:8.0-runtime-ubuntu16.04
+FROM nivida/cuda:8.0-runtime-ubuntu16.04
 
 RUN apt-get update && apt-get install -y python python-dev software-properties-common vim python-pip
 
