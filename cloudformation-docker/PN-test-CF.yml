@@ -1,0 +1,241 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CF to test private instance testing"
+Metadata:
+  Instances:
+    Description: "Information about the instances"
+  VPC: 
+    Description: "Information about the databases"
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: 10.0.0.0/16
+      InstanceTenancy: default
+      Tags:
+      - Key: "Name"
+        Value: "PN-CFVPC"
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-PublicSubnet"
+      VpcId: 
+        Ref: VPC
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties: 
+      AvailabilityZone: eu-west-1b
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-PrivateSubnet1"
+      VpcId: 
+        Ref: VPC
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: eu-west-1c
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - 
+          Key: Name
+          Value: PN-PrivateSubnet2
+      VpcId: 
+        Ref: VPC
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-IGW"
+  IGWAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: 
+        Ref: VPC
+      InternetGatewayId:
+        Ref: InternetGateway
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-RouteTable"
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttach
+    Properties:
+      RouteTableId:
+        Ref: RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PublicSubnet
+      RouteTableId:
+        Ref: RouteTable
+  NatGatewayOneAttachment:
+    Type: AWS::EC2::EIP
+    DependsOn: IGWAttach
+    Properties:
+      Domain: vpc
+  NatGatewayOne:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayOneAttachment.AllocationId
+      SubnetId: 
+        Ref: PublicSubnet
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-Nat"
+
+
+  #Private Route Table One using NAT
+  PrivateRouteTableOne:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: 
+        Ref: VPC
+  PrivateRouteOne:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: 
+        Ref: PrivateRouteTableOne
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: 
+        Ref: NatGatewayOne
+  PrivateRouteTableOneAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: 
+        Ref: PrivateRouteTableOne
+      SubnetId: 
+        Ref: PrivateSubnetA
+
+  #Private Route Table One using NAT
+  PrivateRouteTableTwoAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: 
+        Ref: PrivateRouteTableOne
+      SubnetId: 
+        Ref: PrivateSubnetB
+
+# Security Gr
+
+  PublicInstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+  PrivateInstanceSecurityGroup1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+      - IpProtocol: -1
+        CidrIp: 10.0.1.0/24
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+  PrivateInstanceSecurityGroup2:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 27017
+        ToPort: 27017
+        CidrIp: 10.0.2.0/24
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 10.0.1.0/24
+      SecurityGroupEgress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+
+
+
+  #Instance
+  PublicEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t1.micro
+      KeyName: PN-CW-key
+      ImageId: ami-0773391ae604c49a4
+      SubnetId: 
+        Ref: PublicSubnet
+      SecurityGroupIds: [!Ref PublicInstanceSecurityGroup]
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-PublicInstance"
+
+
+  PrivateEC2Instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t1.micro
+      KeyName: PN-CW-key
+      ImageId: ami-0773391ae604c49a4
+      SubnetId: 
+        Ref: PrivateSubnetA
+      SecurityGroupIds: [!Ref PrivateInstanceSecurityGroup1]
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-PrivateInstance1"
+
+  PrivateEC2Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t1.micro
+      KeyName: PN-CW-key
+      ImageId: ami-0773391ae604c49a4
+      PrivateIpAddress: 10.0.3.7/32
+      SubnetId: 
+        Ref: PrivateSubnetB
+      SecurityGroupIds: [!Ref PrivateInstanceSecurityGroup2]
+      Tags:
+        - 
+          Key: "Name"
+          Value: "PN-PrivateInstance2"
+
+
+  #Public Instances Security Group
